@@ -153,11 +153,20 @@ class DailyListEntryDialog(QDialog):
             return
 
         self.permit_combo.addItem("No permit", None)
-        for permit in self._permits:
-            if permit.car_id == car_id:
-                start = permit.start_date.strftime("%Y-%m-%d %H:%M")
-                end = permit.end_date.strftime("%Y-%m-%d %H:%M")
-                self.permit_combo.addItem(f"#{permit.id} — {start} – {end}", permit.id)
+        car_permits = [permit for permit in self._permits if permit.car_id == car_id]
+        for permit in car_permits:
+            start = permit.start_date.strftime("%Y-%m-%d %H:%M")
+            end = permit.end_date.strftime("%Y-%m-%d %H:%M")
+            self.permit_combo.addItem(f"#{permit.id} — {start} – {end}", permit.id)
+
+        selected_date = self.date_input.date().toPython()
+        valid_permits = [
+            permit
+            for permit in car_permits
+            if permit.start_date.date() <= selected_date <= permit.end_date.date()
+        ]
+        if len(valid_permits) == 1:
+            self.permit_combo.setCurrentIndex(self.permit_combo.findData(valid_permits[0].id))
 
     def get_entry(self, entry_id: int | None = None) -> DailyCarEntry:
         return DailyCarEntry(
