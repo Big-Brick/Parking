@@ -95,10 +95,14 @@ class DailyListEntryDialog(QDialog):
         self.car_combo = QComboBox()
         for car in cars:
             self.car_combo.addItem(car_label(car), car.id)
+        self.car_combo.setPlaceholderText("Select a car")
+        self.car_combo.setCurrentIndex(-1)
+
+        self._permits = permits
         self.permit_combo = QComboBox()
-        self.permit_combo.addItem("No permit", None)
-        for permit in permits:
-            self.permit_combo.addItem(f"Permit #{permit.id} for car #{permit.car_id}", permit.id)
+        self.car_combo.currentIndexChanged.connect(self._update_permits)
+        self._update_permits()
+
         self.date_input = QDateEdit(QDate.currentDate())
         self.date_input.setCalendarPopup(True)
         if entry:
@@ -114,6 +118,20 @@ class DailyListEntryDialog(QDialog):
         buttons.rejected.connect(self.reject)
         form.addRow(buttons)
 
+    def _update_permits(self) -> None:
+        car_id = self.car_combo.currentData()
+        self.permit_combo.clear()
+        self.permit_combo.setEnabled(car_id is not None)
+        if car_id is None:
+            return
+
+        self.permit_combo.addItem("No permit", None)
+        for permit in self._permits:
+            if permit.car_id == car_id:
+                start = permit.start_date.strftime("%Y-%m-%d %H:%M")
+                end = permit.end_date.strftime("%Y-%m-%d %H:%M")
+                self.permit_combo.addItem(f"#{permit.id} — {start} – {end}", permit.id)
+
     def get_entry(self, entry_id: int | None = None) -> DailyCarEntry:
         return DailyCarEntry(
             entry_id,
@@ -121,6 +139,12 @@ class DailyListEntryDialog(QDialog):
             self.permit_combo.currentData(),
             self.date_input.date().toPython(),
         )
+
+    def accept(self) -> None:
+        if self.car_combo.currentData() is None:
+            QMessageBox.warning(self, "Missing car", "Select a car before adding a daily list entry.")
+            return
+        super().accept()
 
 
 class ParkingEventDialog(QDialog):
