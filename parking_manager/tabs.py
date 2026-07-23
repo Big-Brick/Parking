@@ -181,7 +181,12 @@ class CrudTab(BaseTab):
                 if dialog.exec() == QDialog.DialogCode.Accepted:
                     self.service.permits.add_permit(dialog.get_permit())
             elif self.kind == "daily":
-                dialog = DailyListEntryDialog(self, cars, self.service.permits.list_permits())
+                dialog = DailyListEntryDialog(
+                    self,
+                    cars,
+                    self.service.permits.list_permits(),
+                    daily_entries=self.service.daily.list_entries(),
+                )
                 if dialog.exec() == QDialog.DialogCode.Accepted:
                     self.service.daily.add_entry(dialog.get_entry())
             else:
@@ -204,8 +209,15 @@ class CrudTab(BaseTab):
                 if dialog.exec() == QDialog.DialogCode.Accepted:
                     self.service.permits.update_permit(dialog.get_permit(item_id))
             elif self.kind == "daily":
-                item = next(entry for entry in self.service.daily.list_entries() if entry.id == item_id)
-                dialog = DailyListEntryDialog(self, cars, self.service.permits.list_permits(), item)
+                daily_entries = self.service.daily.list_entries()
+                item = next(entry for entry in daily_entries if entry.id == item_id)
+                dialog = DailyListEntryDialog(
+                    self,
+                    cars,
+                    self.service.permits.list_permits(),
+                    item,
+                    daily_entries,
+                )
                 if dialog.exec() == QDialog.DialogCode.Accepted:
                     self.service.daily.update_entry(dialog.get_entry(item_id))
             else:

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QDate, QDateTime
-from PySide6.QtWidgets import QComboBox, QDateEdit, QDateTimeEdit, QDialog, QDialogButtonBox, QFormLayout, QLineEdit, QMessageBox, QWidget
+from PySide6.QtWidgets import QCheckBox, QComboBox, QDateEdit, QDateTimeEdit, QDialog, QDialogButtonBox, QFormLayout, QLineEdit, QMessageBox, QWidget
 
 from parking_manager.models import Car, DailyCarEntry, IndividualPermit, ParkingEvent, car_label
 
@@ -89,23 +89,35 @@ class DailyListEntryDialog(QDialog):
         cars: list[Car],
         permits: list[IndividualPermit],
         entry: DailyCarEntry | None = None,
+        daily_entries: list[DailyCarEntry] | None = None,
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Daily list entry")
-        self.car_combo = QComboBox()
-        for car in cars:
-            self.car_combo.addItem(car_label(car), car.id)
-        self.permit_combo = QComboBox()
-        self.permit_combo.addItem("No permit", None)
-        for permit in permits:
-            self.permit_combo.addItem(f"Permit #{permit.id} for car #{permit.car_id}", permit.id)
+        self._cars = cars
+        self._permits = permits
+        self._daily_entries = daily_entries or []
+        self._entry = entry
+
         self.date_input = QDateEdit(QDate.currentDate())
         self.date_input.setCalendarPopup(True)
         if entry:
-            self.car_combo.setCurrentIndex(max(self.car_combo.findData(entry.car_id), 0))
-            self.permit_combo.setCurrentIndex(max(self.permit_combo.findData(entry.permit_id), 0))
             self.date_input.setDate(QDate(entry.list_date.year, entry.list_date.month, entry.list_date.day))
+
+        self.hide_listed_cars = QCheckBox("Hide cars already on the list for this date")
+        self.hide_listed_cars.setChecked(True)
+        self.car_combo = QComboBox()
+        self.car_combo.setPlaceholderText("Select a car")
+
+        self.permit_combo = QComboBox()
+        self.car_combo.currentIndexChanged.connect(self._update_permits)
+        self.hide_listed_cars.toggled.connect(lambda: self._update_cars())
+        self.date_input.dateChanged.connect(lambda: self._update_cars())
+        self._update_cars(entry.car_id if entry else None)
+
+        if entry:
+            self.permit_combo.setCurrentIndex(max(self.permit_combo.findData(entry.permit_id), 0))
         form = QFormLayout(self)
+        form.addRow(self.hide_listed_cars)
         form.addRow("Car", self.car_combo)
         form.addRow("Permit", self.permit_combo)
         form.addRow("Date", self.date_input)
@@ -114,6 +126,48 @@ class DailyListEntryDialog(QDialog):
         buttons.rejected.connect(self.reject)
         form.addRow(buttons)
 
+    def _update_cars(self, selected_car_id: int | None = None) -> None:
+        if selected_car_id is None:
+            selected_car_id = self.car_combo.currentData()
+
+        listed_car_ids = {
+            daily_entry.car_id
+            for daily_entry in self._daily_entries
+            if daily_entry.list_date == self.date_input.date().toPython()
+            and (self._entry is None or daily_entry.id != self._entry.id)
+        }
+        self.car_combo.blockSignals(True)
+        self.car_combo.clear()
+        for car in self._cars:
+            if not self.hide_listed_cars.isChecked() or car.id not in listed_car_ids:
+                self.car_combo.addItem(car_label(car), car.id)
+        self.car_combo.setCurrentIndex(self.car_combo.findData(selected_car_id))
+        self.car_combo.blockSignals(False)
+        self._update_permits()
+
+    def _update_permits(self) -> None:
+        car_id = self.car_combo.currentData()
+        self.permit_combo.clear()
+        self.permit_combo.setEnabled(car_id is not None)
+        if car_id is None:
+            return
+
+        self.permit_combo.addItem("No permit", None)
+        car_permits = [permit for permit in self._permits if permit.car_id == car_id]
+        for permit in car_permits:
+            start = permit.start_date.strftime("%Y-%m-%d %H:%M")
+            end = permit.end_date.strftime("%Y-%m-%d %H:%M")
+            self.permit_combo.addItem(f"#{permit.id} — {start} – {end}", permit.id)
+
+        selected_date = self.date_input.date().toPython()
+        valid_permits = [
+            permit
+            for permit in car_permits
+            if permit.start_date.date() <= selected_date <= permit.end_date.date()
+        ]
+        if len(valid_permits) == 1:
+            self.permit_combo.setCurrentIndex(self.permit_combo.findData(valid_permits[0].id))
+
     def get_entry(self, entry_id: int | None = None) -> DailyCarEntry:
         return DailyCarEntry(
             entry_id,
@@ -121,6 +175,12 @@ class DailyListEntryDialog(QDialog):
             self.permit_combo.currentData(),
             self.date_input.date().toPython(),
         )
+
+    def accept(self) -> None:
+        if self.car_combo.currentData() is None:
+            QMessageBox.warning(self, "Missing car", "Select a car before adding a daily list entry.")
+            return
+        super().accept()
 
 
 class ParkingEventDialog(QDialog):
